@@ -1,3 +1,5 @@
+import token
+
 import torch
 import torch.nn as nn
 import ast
@@ -9,6 +11,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from transformers import AutoTokenizer, AutoModel
 from fastapi.middleware.cors import CORSMiddleware
+from huggingface_hub import hf_hub_download
 
 # MODEL ARCHITECTURE 
 class ComplexityFusionModel(nn.Module):
@@ -130,15 +133,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # Load Model
 device = torch.device("cpu")
-tokenizer = AutoTokenizer.from_pretrained("microsoft/codebert-base")
+tokenizer = AutoTokenizer.from_pretrained("microsoft/unixcoder-base")
 label_map = {0: 'CONSTANT', 1: 'LINEAR', 2: 'LOGN', 3: 'NLOGN', 4: 'QUADRATIC', 5: 'CUBIC', 6: 'NP'}
 
-print("Loading model...")
-model = ComplexityFusionModel("microsoft/codebert-base", 7, 4)
+print("Downloading model weights...")
+model_path = hf_hub_download(repo_id="himansha2001/algox", filename="model.pth")
 
-model.load_state_dict(torch.load("./model.pth", map_location=device))
+print("Loading model...")
+model = ComplexityFusionModel("microsoft/unixcoder-base", 7, 4)
+
+model.load_state_dict(torch.load(model_path, map_location=device))
 model.to(device)
 model.eval()
 print("Model loaded successfully!")
@@ -147,19 +154,9 @@ class CodeRequest(BaseModel):
     code: str
     language: str = "java"
 
-# SHAP Helper
-def hybrid_predictor(texts):
-    global current_static_features
-    inputs = tokenizer(list(texts), return_tensors="pt", padding=True, truncation=True).to(device)
-    batch_size = inputs['input_ids'].shape[0]
-    expanded_static = current_static_features.repeat(batch_size, 1)
-    with torch.no_grad():
-        logits = model(inputs['input_ids'], inputs['attention_mask'], expanded_static)
-    return torch.nn.functional.softmax(logits, dim=1).detach().numpy()
 
 @app.post("/predict")
 async def predict_complexity(request: CodeRequest):
-    global current_static_features
     
     # Prepare
     lang = request.language.lower()
@@ -169,31 +166,53 @@ async def predict_complexity(request: CodeRequest):
     else:
         feats = get_java_features(request.code)
         
-    current_static_features = torch.tensor([feats], dtype=torch.float).to(device)
+    request_static_features = torch.tensor([feats], dtype=torch.float).to(device)
     
     # Predict
     inputs = tokenizer(cleaned_code, return_tensors="pt", truncation=True, max_length=512).to(device)
     with torch.no_grad():
-        logits = model(inputs['input_ids'], inputs['attention_mask'], current_static_features)
+        logits = model(inputs['input_ids'], inputs['attention_mask'], request_static_features)
         probs = torch.nn.functional.softmax(logits, dim=1)
         
     pred_idx = probs.argmax().item()
     confidence = probs.max().item()
     prediction = label_map[pred_idx]
     
+    def get_predictor(static_feats):
+        def predictor(texts):
+            inputs = tokenizer(list(texts), return_tensors="pt", padding=True, truncation=True).to(device)
+            batch_size = inputs['input_ids'].shape[0]
+            expanded_static = static_feats.repeat(batch_size, 1)
+            with torch.no_grad():
+                logits = model(inputs['input_ids'], inputs['attention_mask'], expanded_static)
+            return torch.nn.functional.softmax(logits, dim=1).detach().numpy()
+        return predictor
+
     # Explain (SHAP)
     masker = shap.maskers.Text(tokenizer, mask_token="<mask>")
-    explainer = shap.Explainer(hybrid_predictor, masker, output_names=list(label_map.values()))
+    explainer = shap.Explainer(get_predictor(request_static_features), masker, output_names=list(label_map.values()))
     
     # Run SHAP
     shap_values = explainer([cleaned_code], max_evals=10)
     
-    token_data = []
     tokens = shap_values.data[0]
     scores = shap_values.values[0, :, pred_idx]
     
-    for t, s in zip(tokens, scores):
-        token_data.append({"token": t, "score": float(s)})
+    encoding = tokenizer(cleaned_code, return_offsets_mapping=True, truncation=True, max_length=512)
+    offsets = encoding["offset_mapping"]
+    
+    token_data = []
+    
+    for i, (t, s) in enumerate(zip(tokens, scores)):
+        start_char = offsets[i][0] if i < len(offsets) else 0
+        end_char = offsets[i][1] if i < len(offsets) else 0
+        
+        token_data.append({
+            "token": t, 
+            "score": float(s),
+            "start_char": start_char,
+            "end_char": end_char
+        })
         
     return {
         "complexity": prediction,
