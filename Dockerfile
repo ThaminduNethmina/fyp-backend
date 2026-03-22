@@ -1,5 +1,5 @@
-# Use Python 3.9
-FROM python:3.9
+# Use Python 3.10
+FROM python:3.10
 
 # Set the working directory to /code
 WORKDIR /code
