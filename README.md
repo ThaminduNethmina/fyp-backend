@@ -1,3 +1,4 @@
+---
 title: Algox Backend
 emoji: 🦀
 colorFrom: pink
@@ -7,3 +8,4 @@ pinned: false
 app_port: 7860
 license: mit
 short_description: The model for the AlgoX
+---
