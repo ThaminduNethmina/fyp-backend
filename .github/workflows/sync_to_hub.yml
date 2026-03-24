@@ -14,4 +14,4 @@ jobs:
       - name: Push to hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: git push https://himansha2001:$HF_TOKEN@huggingface.co/spaces/himansha2001/algox-backend main
+        run: git push --force https://himansha2001:$HF_TOKEN@huggingface.co/spaces/himansha2001/algox-backend main

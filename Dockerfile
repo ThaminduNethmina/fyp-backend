@@ -1,5 +1,5 @@
-# Use Python 3.9
-FROM python:3.9
+# Use Python 3.10
+FROM python:3.10
 
 # Set the working directory to /code
 WORKDIR /code
@@ -8,7 +8,7 @@ WORKDIR /code
 COPY ./requirements.txt /code/requirements.txt
 
 # Install dependencies
-RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt --index-url https://download.pytorch.org/whl/cpu
+RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
 
 # Copy the rest of the application files
 COPY . .
