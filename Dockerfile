@@ -18,4 +18,4 @@ RUN mkdir -p /code/cache && chmod -R 777 /code/cache
 ENV TRANSFORMERS_CACHE=/code/cache
 
 # Hugging Face Spaces specific environment variable
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860"]

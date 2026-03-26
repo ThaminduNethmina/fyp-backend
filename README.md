@@ -7,5 +7,5 @@ sdk: docker
 pinned: false
 app_port: 7860
 license: mit
-short_description: The model for the AlgoX
+short_description: The backend for the AlgoX
 ---
