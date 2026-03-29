@@ -8,3 +8,4 @@ shap
 javalang
 huggingface_hub
 pydantic
+protobuf
